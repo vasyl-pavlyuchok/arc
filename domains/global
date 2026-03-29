@@ -1,0 +1,64 @@
+# ARC Global Domain
+# ==================
+# Universal rules that apply to all sessions.
+#
+# Format:
+#   {DOMAIN}_RULE_{N}_SHORT=compact text (≤15 words) — injected every prompt
+#   {DOMAIN}_RULE_{N}=full text — loaded only when domain is keyword-matched
+#
+# GLOBAL is always_on → only _SHORT versions are injected per message.
+# Keep SHORT variants tight — they run on every single prompt.
+
+# --- Session start ---
+GLOBAL_RULE_SESSION_START_SHORT=Read project context files at session start before responding.
+GLOBAL_RULE_SESSION_START=SESSION START: Before responding to the first message, read the project's context files (CLAUDE.md, WORK.md, or equivalent) to understand current state. Without this, you lack real context.
+
+# --- Core behavior ---
+GLOBAL_RULE_1_SHORT=Absolute paths in code; relative paths when referencing to user.
+GLOBAL_RULE_1=Use absolute paths in all code to prevent path traversal issues. Use relative paths when referencing files to the user for readability.
+
+GLOBAL_RULE_2_SHORT=Batch parallel tool calls when no dependencies between them.
+GLOBAL_RULE_2=Batch tool calls when possible — sequential only when there are hard dependencies. Maximize parallel execution.
+
+GLOBAL_RULE_3_SHORT=Never mark task complete without validating real functionality.
+GLOBAL_RULE_3=NEVER mark tasks complete without validating functionality — test everything, require real proof.
+
+GLOBAL_RULE_4_SHORT=Read files before editing. Understand before modifying.
+GLOBAL_RULE_4=Read files before editing them — understand existing code before suggesting modifications.
+
+GLOBAL_RULE_5_SHORT=Edit existing files over creating new ones.
+GLOBAL_RULE_5=Prefer editing existing files over creating new ones unless explicitly required.
+
+GLOBAL_RULE_6_SHORT=Minimal focused changes. Only what was asked.
+GLOBAL_RULE_6=Keep changes minimal and focused — only modify what's directly requested.
+
+GLOBAL_RULE_7_SHORT=No over-engineering. No unprompted features or abstractions.
+GLOBAL_RULE_7=Avoid over-engineering — don't add features, abstractions, or improvements beyond what was asked.
+
+# --- ARC Evolution Protocol ---
+GLOBAL_RULE_8_SHORT=ARC EVO: propose detected pattern → wait confirmation → register.
+GLOBAL_RULE_8=ARC EVOLUTION: When a repeatable, actionable, stable pattern is identified during work, propose it explicitly: "ARC pattern detected — domain [X], proposed rule: [text]. Register it?" Wait for confirmation before writing.
+
+GLOBAL_RULE_9_SHORT=ARC EVO: valid rule = repeatable + actionable + stable. Else → notes.
+GLOBAL_RULE_9=ARC EVOLUTION: A rule earns its place only if: (1) repeatable across future sessions, (2) actionable — changes concrete behavior, (3) stable — won't change in weeks. If it fails any criterion, it goes to notes or docs instead.
+
+GLOBAL_RULE_10_SHORT=ARC EVO: new area without domain → propose creating one.
+GLOBAL_RULE_10=ARC EVOLUTION: When work begins in a completely new area with no existing domain, propose creating one: "New ARC domain — create [name] for [area] rules?"
+
+GLOBAL_RULE_11_SHORT=ARC EVO: obsolete rules → delete. ARC lean or it becomes noise.
+GLOBAL_RULE_11=ARC EVOLUTION: Rules that prove wrong or outdated must be removed, not accumulated. ARC stays lean or it becomes noise.
+
+# --- Documentation ---
+GLOBAL_RULE_12_SHORT=Update docs after each task. No waiting.
+GLOBAL_RULE_12=After completing any task, update relevant documentation immediately. Don't batch doc updates.
+
+# --- Git ---
+GLOBAL_RULE_13_SHORT=Commit+push when asked = only that. No explaining deploys.
+GLOBAL_RULE_13=When asked to commit+push, do exactly that. Don't explain deploy flows, suggest additional steps, or ask follow-up questions.
+
+# --- Safety ---
+GLOBAL_RULE_14_SHORT=Warn before overwriting files >30 lines. Commit after rewrites.
+GLOBAL_RULE_14=Before overwriting any existing file >30 lines with Write tool, show a table of what's kept/moved/removed. Commit immediately after any full rewrite — the Write tool has no diff.
+
+GLOBAL_RULE_15_SHORT=Don't ask the obvious. Execute next clear step without permission.
+GLOBAL_RULE_15=When there's a clear next step in the plan, execute it directly without asking "should I continue with X or Y?". Only pause for real architectural decisions.

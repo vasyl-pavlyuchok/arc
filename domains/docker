@@ -1,0 +1,18 @@
+# ARC Domain: DOCKER
+# Example domain for Docker/container workflows
+# Triggered by: docker, container, compose, traefik, build, deploy, image, port, production
+
+DOCKER_RULE_0_SHORT=docker-compose.yml = base infrastructure. Don't touch without thinking.
+DOCKER_RULE_0=docker-compose.yml in project root is base infrastructure. Never modify without understanding the impact — it affects production services.
+
+DOCKER_RULE_1_SHORT=Projects in /projects/<name>/. Infrastructure ≠ projects.
+DOCKER_RULE_1=Keep project docker-compose files separate from infrastructure. Each project in its own directory with its own docker-compose.yml.
+
+DOCKER_RULE_2_SHORT=Reverse proxy as single entry point. Never expose ports directly.
+DOCKER_RULE_2=Use a reverse proxy (Traefik, Nginx, Caddy) as the single entry point on 80/443. Never expose container ports directly to the internet.
+
+DOCKER_RULE_3_SHORT=New containers must join the shared proxy network.
+DOCKER_RULE_3=All new containers that need HTTP access must connect to the shared proxy network (e.g., web_manual for Traefik). Don't create isolated networks for public-facing services.
+
+DOCKER_RULE_4_SHORT=Build and restart only when user explicitly requests "publish/deploy".
+DOCKER_RULE_4=Never run docker compose build or docker compose up without explicit user request to publish or deploy. Code changes don't auto-trigger builds.
