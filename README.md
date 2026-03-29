@@ -151,6 +151,8 @@ Then add the hooks to your `~/.claude/settings.json`:
 
 Restart Claude Code and ARC is active.
 
+> **Not sure how to install it?** Just paste this repo's URL into your Claude Code and it will guide you through the entire setup.
+
 ---
 
 ## Creating Your Own Domains
@@ -273,7 +275,7 @@ Las reglas se organizan en **dominios** y solo se cargan cuando aparecen palabra
 ARC es un hook `UserPromptSubmit` de Claude Code. Se ejecuta antes de cada mensaje e inyecta solo lo relevante.
 
 ```
-Vasyl envía mensaje
+Tú envías mensaje
        ↓
 arc-hook.py lee ~/.arc/manifest
        ↓
@@ -301,6 +303,50 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Luego configura los hooks en `~/.claude/settings.json` (ver sección completa arriba en inglés).
+Luego añade los hooks a `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/arc-hook.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/output-trimmer.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/secret-scanner.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Reinicia Claude Code y ARC estará activo.
+
+> **¿No sabes cómo instalarlo?** Pásale el enlace de este repositorio a tu Claude Code y él te guiará paso a paso en todo el proceso.
 
 Las contribuciones en español son bienvenidas.
