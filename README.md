@@ -12,13 +12,29 @@ With 30+ rules across areas like Docker, workflows, project context, and behavio
 
 This is the **CARL problem**: rules accumulate, everything loads on every message, and your context window slowly fills with rules you don't need right now.
 
+## The Insight
+
+Anthropic already solved this problem — in Claude Code's own **skills system**.
+
+Skills are always visible as a `name + short description`. The full definition only loads when the skill is actually invoked. You get awareness without overhead.
+
+ARC applies the exact same pattern to your rules:
+
+| Skills system | ARC |
+|---|---|
+| `name + short description` always visible | `_SHORT variant` always injected |
+| Full definition loads on invocation | Full domain loads on keyword match |
+| You pick the skill by name | Claude matches by keyword in your prompt |
+
+The design principle isn't new — it comes directly from how Anthropic built Claude Code. ARC just extends it to your own rules and workflows.
+
 ## The Solution
 
-ARC uses **keyword-triggered domains**. Rules are organized into domains and loaded only when relevant keywords appear in your prompt.
+Rules are organized into **domains** and loaded only when relevant keywords appear in your prompt.
 
 | Prompt | What loads |
 |---|---|
-| "how does this function work?" | GLOBAL only (~15 short rules) |
+| "how does this function work?" | GLOBAL only (short summaries) |
 | "fix the docker network issue" | GLOBAL + DOCKER (full rules) |
 | "set up the webhook endpoint" | GLOBAL + your workflow domain |
 | Working in `/projects/myapp/` | GLOBAL + MYAPP (path-detected) |
@@ -202,6 +218,8 @@ A rule earns its place only if it's:
 Static rule files are a good start. But they don't scale.
 
 ARC treats rules like code: organized by domain, loaded on demand, evolved over time, and pruned when stale. The result is a Claude Code setup that gets more effective with use — without ever bloating your context window.
+
+The core idea isn't new. Look at how Claude Code skills work: a short description is always visible, the full definition only loads on invocation. That's lazy loading applied to AI context. ARC brings the same principle to your rules — the architecture was already there, we just connected the dots.
 
 ---
 
