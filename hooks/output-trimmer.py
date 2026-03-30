@@ -2,7 +2,7 @@
 """
 Output Trimmer - PostToolUse hook for Claude Code
 Reduces token waste from verbose bash command outputs.
-Tailored for: Next.js dev, Docker, git, npm workflows.
+Tailored for: Next.js dev, Docker, git, npm, Python, Rust workflows.
 """
 import json
 import sys
@@ -11,17 +11,22 @@ import re
 
 # Limits per command type (lines)
 LIMITS = {
-    "ls":          40,
-    "find":        60,
-    "git diff":   120,
-    "git log":     40,
-    "git status":  60,
-    "docker logs": 60,   # keep tail (most recent)
-    "docker ps":   30,
+    "ls":           40,
+    "find":         60,
+    "git diff":    120,
+    "git log":      40,
+    "git status":   60,
+    "docker logs":  60,   # keep tail (most recent)
+    "docker ps":    30,
     "docker images": 30,
-    "npm":         30,   # keep tail (summary)
-    "yarn":        30,
-    "wc":         100,
+    "npm":          30,   # keep tail (summary)
+    "yarn":         30,
+    "pnpm":         30,   # keep tail (summary)
+    "pip":          40,   # keep tail (installed packages summary)
+    "cargo":        50,   # keep tail (build/test summary)
+    "pytest":       60,   # keep tail (test results summary)
+    "jest":         60,   # keep tail (test results summary)
+    "wc":          100,
 }
 
 GENERIC_LIMIT = 300  # fallback for any unrecognized long output
@@ -56,6 +61,16 @@ def classify(command: str) -> tuple[str | None, bool]:
         return "npm", True  # keep summary at end
     if re.match(r'yarn\b', cmd):
         return "yarn", True
+    if re.match(r'pnpm\b', cmd):
+        return "pnpm", True   # keep summary at end
+    if re.match(r'pip\b', cmd):
+        return "pip", True    # keep installed packages at end
+    if re.match(r'cargo\b', cmd):
+        return "cargo", True  # keep build/test summary at end
+    if re.match(r'pytest\b', cmd):
+        return "pytest", True # keep test results at end
+    if re.match(r'jest\b', cmd):
+        return "jest", True   # keep test results at end
     if re.match(r'wc\b', cmd):
         return "wc", False
     return None, False
