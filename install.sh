@@ -54,54 +54,58 @@ if [ ! -f "$SETTINGS_FILE" ]; then
   echo '{}' > "$SETTINGS_FILE"
 fi
 
-# Check if arc-hook is already registered
+# Auto-merge ARC hooks into settings.json without overwriting existing hooks
 if grep -q "arc-hook.py" "$SETTINGS_FILE" 2>/dev/null; then
-  echo "   ⚠  arc-hook.py already registered in settings.json"
+  echo "   ⚠  arc-hook.py already registered in settings.json — skipping"
 else
-  echo ""
-  echo "   Add the following to your $SETTINGS_FILE under 'hooks':"
-  echo ""
-  cat << 'EOF'
-  {
-    "hooks": {
-      "UserPromptSubmit": [
-        {
-          "matcher": "",
-          "hooks": [
-            {
-              "type": "command",
-              "command": "python3 ~/.claude/hooks/arc-hook.py"
-            }
-          ]
-        }
-      ],
-      "PostToolUse": [
-        {
-          "matcher": "Bash",
-          "hooks": [
-            {
-              "type": "command",
-              "command": "python3 ~/.claude/hooks/output-trimmer.py"
-            }
-          ]
-        }
-      ],
-      "PreToolUse": [
-        {
-          "matcher": "Bash",
-          "hooks": [
-            {
-              "type": "command",
-              "command": "python3 ~/.claude/hooks/secret-scanner.py"
-            }
-          ]
-        }
-      ]
+  python3 - "$SETTINGS_FILE" << 'PYEOF'
+import json, sys
+
+settings_file = sys.argv[1]
+try:
+    with open(settings_file, 'r') as f:
+        settings = json.load(f)
+except (json.JSONDecodeError, FileNotFoundError):
+    settings = {}
+
+hooks = settings.setdefault('hooks', {})
+
+arc_hooks = {
+    'UserPromptSubmit': {
+        'matcher': '',
+        'hook': {'type': 'command', 'command': 'python3 ~/.claude/hooks/arc-hook.py'}
+    },
+    'PostToolUse': {
+        'matcher': 'Bash',
+        'hook': {'type': 'command', 'command': 'python3 ~/.claude/hooks/output-trimmer.py'}
+    },
+    'PreToolUse': {
+        'matcher': 'Bash',
+        'hook': {'type': 'command', 'command': 'python3 ~/.claude/hooks/secret-scanner.py'}
     }
-  }
-EOF
-  echo ""
-  echo "   (Automatic settings.json merge coming in a future version)"
+}
+
+for event, config in arc_hooks.items():
+    event_hooks = hooks.setdefault(event, [])
+    # Find existing group with same matcher or create new one
+    target_group = None
+    for group in event_hooks:
+        if group.get('matcher', '') == config['matcher']:
+            target_group = group
+            break
+    if target_group is None:
+        target_group = {'matcher': config['matcher'], 'hooks': []}
+        event_hooks.append(target_group)
+    # Add hook if not already present
+    hook_cmd = config['hook']['command']
+    if not any(h.get('command') == hook_cmd for h in target_group.get('hooks', [])):
+        target_group.setdefault('hooks', []).append(config['hook'])
+
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=2)
+    f.write('\n')
+PYEOF
+  echo "   ✓  settings.json updated (hooks merged, existing hooks preserved)"
 fi
 
 echo ""

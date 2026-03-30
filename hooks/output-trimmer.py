@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Output Trimmer — PostToolUse hook for Claude Code
+Output Trimmer - PostToolUse hook for Claude Code
 Reduces token waste from verbose bash command outputs.
 Tailored for: Next.js dev, Docker, git, npm workflows.
 """
@@ -27,9 +27,15 @@ LIMITS = {
 GENERIC_LIMIT = 300  # fallback for any unrecognized long output
 
 
+def extract_final_command(command: str) -> str:
+    """Extract the last command in a chain (split on && and |)."""
+    parts = re.split(r'&&|\|', command)
+    return parts[-1].strip()
+
+
 def classify(command: str) -> tuple[str | None, bool]:
     """Returns (key, keep_tail). keep_tail=True means keep last N lines instead of first N."""
-    cmd = command.strip()
+    cmd = extract_final_command(command)
     if re.match(r'ls\b', cmd):
         return "ls", False
     if re.match(r'find\b', cmd):
@@ -90,6 +96,17 @@ def main():
         trimmed = trim(output, limit, keep_tail)
 
         if trimmed != output:
+            # Log trim event for pattern analysis
+            try:
+                import datetime
+                log_path = "/root/.claude/hooks/trim-stats.log"
+                original_lines = len(output.split("\n"))
+                trimmed_lines = len(trimmed.split("\n"))
+                with open(log_path, "a") as f:
+                    f.write(f"{datetime.date.today()} | {key or 'generic'} | {original_lines} → {trimmed_lines} lines | cmd: {command[:80]}\n")
+            except Exception:
+                pass
+
             print(json.dumps({
                 "hookSpecificOutput": {
                     "hookEventName": "PostToolUse",

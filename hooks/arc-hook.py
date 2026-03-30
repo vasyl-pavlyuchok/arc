@@ -54,7 +54,7 @@ def get_sessions_path(arc_path: Path) -> Path:
 
 def load_session_config(arc_path: Path, session_id: str) -> dict | None:
     """
-    Load session config from .carl/sessions/{session_id}.json
+    Load session config from .arc/sessions/{session_id}.json
     Returns None if session doesn't exist.
     """
     if not session_id:
@@ -76,7 +76,7 @@ def load_session_config(arc_path: Path, session_id: str) -> dict | None:
 
 def save_session_config(arc_path: Path, session_config: dict) -> bool:
     """
-    Save session config to .carl/sessions/{uuid}.json
+    Save session config to .arc/sessions/{uuid}.json
     Returns True on success.
     """
     session_id = session_config.get('uuid')
@@ -480,7 +480,7 @@ def get_active_bracket(context_remaining: float | None) -> str:
 
 def parse_context_file(context_path: Path) -> tuple[dict[str, bool], dict[str, list[str]]]:
     """
-    Parse .carl/context file for bracket rules.
+    Parse .arc/context file for bracket rules.
     Returns (bracket_flags, bracket_rules) where:
     - bracket_flags: {BRACKET: enabled_bool}
     - bracket_rules: {BRACKET: [rule1, rule2, ...]}
@@ -520,12 +520,12 @@ def parse_context_file(context_path: Path) -> tuple[dict[str, bool], dict[str, l
 
 def find_carl_files(cwd: str) -> dict[str, Path]:
     """
-    Find all files in .carl/ folder by walking up directory tree.
+    Find all files in .arc/ folder by walking up directory tree.
     Returns dict mapping file type to path.
     """
     carl_files = {}
 
-    # Walk up directory tree to find .carl (like session-context hooks do)
+    # Walk up directory tree to find .arc (like session-context hooks do)
     search_path = Path(cwd)
     arc_path = None
 
@@ -733,7 +733,7 @@ def check_exclusions(prompt_lower: str, exclude_list: list[str]) -> list[str]:
     """
     matched_exclusions = []
     for keyword in exclude_list:
-        pattern = re.escape(keyword)
+        pattern = r'(?<!\w)' + re.escape(keyword) + r'(?!\w)'
         if re.search(pattern, prompt_lower):
             matched_exclusions.append(keyword)
     return matched_exclusions
@@ -783,7 +783,7 @@ def match_domains_to_prompt(
         domain_matches = []
         for keyword in recall_list:
             # Use word boundary matching for better accuracy
-            pattern = re.escape(keyword)
+            pattern = r'(?<!\w)' + re.escape(keyword) + r'(?!\w)'
             if re.search(pattern, prompt_lower):
                 domain_matches.append(keyword)
 
@@ -813,7 +813,7 @@ def format_output(
     """
     Format the injected rules as XML context block.
     """
-    output = "\n<arc-rules>\n"
+    output = "\n<carl-rules>\n"
 
     # Context bracket status (only if CONTEXT domain is enabled)
     if context_enabled:
@@ -922,7 +922,7 @@ def format_output(
     for domain, config in domains.items():
         if config.get('state', False) and not config.get('always_on', False):
             if domain not in matched_rules and domain not in excluded_domains:
-                # Only show if domain file actually exists in .carl/
+                # Only show if domain file actually exists in .arc/
                 if domains_with_files is None or domain.lower() in domains_with_files:
                     recall = config.get('recall', '')
                     unloaded.append(f"{domain} ({recall})")
@@ -933,7 +933,7 @@ def format_output(
             output += f"  {item}\n"
         output += "Use drl_get_domain_rules(domain) to load manually if needed.\n"
 
-    output += "</arc-rules>\n"
+    output += "</carl-rules>\n"
 
     return output
 
@@ -1018,7 +1018,7 @@ def main():
 
     debug_log(f"User prompt: {user_prompt[:100]}...")
 
-    # Find all files in .carl/ folder
+    # Find all files in .arc/ folder
     carl_files = find_carl_files(cwd)
 
     # Must have manifest

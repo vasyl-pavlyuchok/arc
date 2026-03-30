@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Secret Scanner Hook
-Detects hardcoded secrets before git commits
-Source: github.com/davila7/claude-code-templates
+Secret Scanner — PreToolUse hook for Claude Code
+Detects hardcoded secrets before git commits.
+Part of ARC (Adaptive Rule Context) — github.com/vasyl-pavlyuchok/arc
 """
 
 import json
@@ -159,8 +159,9 @@ EXCLUDED_DIRS = [
     'env/',
 ]
 
+
 def should_skip_file(file_path):
-    """Check if file should be skipped"""
+    """Check if file should be skipped."""
     if not os.path.exists(file_path):
         return True
 
@@ -177,26 +178,74 @@ def should_skip_file(file_path):
             chunk = f.read(1024)
             if b'\0' in chunk:
                 return True
-    except:
+    except Exception:
         return True
 
     return False
 
+
 def get_staged_files():
-    """Get list of staged files"""
+    """Get list of files currently staged for commit."""
     try:
         result = subprocess.run(
             ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'],
-            capture_output=True,
-            text=True,
-            check=True
+            capture_output=True, text=True, check=True
         )
         return [f.strip() for f in result.stdout.split('\n') if f.strip()]
     except subprocess.CalledProcessError:
         return []
 
+
+def get_files_to_scan(command: str) -> list[str]:
+    """
+    Determine which files to scan based on the git commit command.
+    Handles both normal commits (staged files) and git commit -a (all modified tracked files).
+    """
+    files = get_staged_files()
+
+    # For git commit -a, also include modified tracked files not yet staged
+    if re.search(r'git\s+commit\b.*\s-\w*a\b', command):
+        try:
+            result = subprocess.run(
+                ['git', 'diff', '--name-only', 'HEAD'],
+                capture_output=True, text=True
+            )
+            for f in result.stdout.strip().split('\n'):
+                f = f.strip()
+                if f and os.path.isfile(f) and f not in files:
+                    files.append(f)
+        except Exception:
+            pass
+
+    # Also parse explicit file args from the command
+    for part in re.split(r'&&|;', command):
+        part = part.strip()
+        add_match = re.match(r'git\s+add\s+(.+)', part)
+        if add_match:
+            args = add_match.group(1).strip()
+            if args in ('.', '-A', '--all'):
+                try:
+                    result = subprocess.run(
+                        ['git', 'status', '--porcelain'],
+                        capture_output=True, text=True
+                    )
+                    for line in result.stdout.strip().split('\n'):
+                        if line and len(line) > 3:
+                            f = line[3:].strip()
+                            if os.path.isfile(f) and f not in files:
+                                files.append(f)
+                except Exception:
+                    pass
+            else:
+                for token in args.split():
+                    if not token.startswith('-') and os.path.isfile(token) and token not in files:
+                        files.append(token)
+
+    return files
+
+
 def scan_file(file_path):
-    """Scan a single file for secrets"""
+    """Scan a single file for secrets."""
     findings = []
 
     if should_skip_file(file_path):
@@ -228,8 +277,9 @@ def scan_file(file_path):
 
     return findings
 
+
 def print_findings(findings):
-    """Print findings in a formatted way"""
+    """Print findings in a formatted way."""
     if not findings:
         return
 
@@ -276,9 +326,10 @@ def print_findings(findings):
     print('     • Create/update .env file (ensure it\'s in .gitignore)', file=sys.stderr)
     print('     • Use process.env.SECRET_NAME (Node.js) or os.environ.get("SECRET_NAME") (Python)', file=sys.stderr)
     print('', file=sys.stderr)
-    print('  3. For false positives:', file=sys.stderr)
+    print('  2. For false positives:', file=sys.stderr)
     print('     • Add comments with "example" or "placeholder" to skip detection', file=sys.stderr)
     print('', file=sys.stderr)
+
 
 def main():
     try:
@@ -291,44 +342,13 @@ def main():
     if not re.search(r'git\s+commit', command):
         sys.exit(0)
 
-    staged_files = get_staged_files()
+    files_to_scan = get_files_to_scan(command)
 
-    if not staged_files:
-        commit_match = re.search(r'git\s+commit\s+(.+)', command)
-        if commit_match and re.search(r'-\w*a', commit_match.group(1)):
-            result = subprocess.run(
-                ['git', 'diff', '--name-only'],
-                capture_output=True, text=True
-            )
-            for f in result.stdout.strip().split('\n'):
-                if f.strip() and os.path.isfile(f.strip()):
-                    staged_files.append(f.strip())
-
-        for part in re.split(r'&&|;', command):
-            part = part.strip()
-            add_match = re.match(r'git\s+add\s+(.+)', part)
-            if add_match:
-                args = add_match.group(1).strip()
-                if args in ('.', '-A', '--all'):
-                    result = subprocess.run(
-                        ['git', 'status', '--porcelain'],
-                        capture_output=True, text=True
-                    )
-                    for line in result.stdout.strip().split('\n'):
-                        if line and len(line) > 3:
-                            f = line[3:].strip()
-                            if os.path.isfile(f):
-                                staged_files.append(f)
-                else:
-                    for token in args.split():
-                        if not token.startswith('-') and os.path.isfile(token):
-                            staged_files.append(token)
-
-    if not staged_files:
+    if not files_to_scan:
         sys.exit(0)
 
     all_findings = []
-    for file_path in staged_files:
+    for file_path in files_to_scan:
         findings = scan_file(file_path)
         all_findings.extend(findings)
 
@@ -337,6 +357,7 @@ def main():
         sys.exit(2)
 
     sys.exit(0)
+
 
 if __name__ == '__main__':
     main()
