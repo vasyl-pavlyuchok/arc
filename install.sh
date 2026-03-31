@@ -82,6 +82,10 @@ arc_hooks = {
     'PreToolUse': {
         'matcher': 'Bash',
         'hook': {'type': 'command', 'command': 'python3 ~/.claude/hooks/secret-scanner.py'}
+    },
+    'Stop': {
+        'matcher': '',
+        'hook': {'type': 'command', 'command': 'python3 ~/.claude/hooks/arc-suggest.py'}
     }
 }
 
