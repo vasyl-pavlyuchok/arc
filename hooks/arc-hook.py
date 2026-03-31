@@ -624,6 +624,58 @@ def parse_manifest(manifest_path: Path) -> tuple[dict, list[str], bool]:
     return domains, global_exclude, devmode
 
 
+def parse_semantic_config(manifest_path: Path) -> tuple[bool, float]:
+    """
+    Read SEMANTIC_MATCHING and SEMANTIC_THRESHOLD from manifest.
+    Returns (enabled: bool, threshold: float).
+    """
+    enabled = False
+    threshold = 0.55
+    if not manifest_path.exists():
+        return enabled, threshold
+    try:
+        with open(manifest_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('SEMANTIC_MATCHING='):
+                    enabled = line.split('=', 1)[1].strip().lower() in ('true', 'yes', '1', 'on')
+                elif line.startswith('SEMANTIC_THRESHOLD='):
+                    try:
+                        threshold = float(line.split('=', 1)[1].strip())
+                    except ValueError:
+                        pass
+    except Exception:
+        pass
+    return enabled, threshold
+
+
+def run_semantic_fallback(prompt: str, domains: dict, threshold: float) -> dict[str, list[str]]:
+    """
+    Call arc-semantic.py as subprocess to get semantic domain matches.
+    Returns {DOMAIN: ['semantic']} or {} on failure.
+    """
+    semantic_script = Path(__file__).parent / 'arc-semantic.py'
+    if not semantic_script.exists():
+        debug_log("arc-semantic.py not found — skipping semantic fallback")
+        return {}
+
+    payload = json.dumps({'prompt': prompt, 'domains': domains, 'threshold': threshold})
+    try:
+        result = subprocess.run(
+            ['python3', str(semantic_script)],
+            input=payload, capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout.strip())
+            latency = data.get('latency_ms', '?')
+            matched = data.get('matched', {})
+            debug_log(f"Semantic fallback: {matched} ({latency}ms)")
+            return matched
+    except Exception as e:
+        debug_log(f"Semantic fallback error: {e}")
+    return {}
+
+
 def parse_domain_rules(domain_path: Path, domain_name: str, compact: bool = False) -> list[str]:
     """
     Parse a domain file and extract its rules.
@@ -1114,6 +1166,14 @@ def main():
         matched_keywords, excluded_domains, global_excluded = match_domains_to_prompt(
             domains, user_prompt, global_exclude
         )
+
+        # Semantic fallback: only when literal matching found 0 domains AND opt-in
+        if not matched_keywords:
+            semantic_enabled, semantic_threshold = parse_semantic_config(carl_files['manifest'])
+            if semantic_enabled:
+                debug_log("Literal matching returned 0 — trying semantic fallback")
+                semantic_matches = run_semantic_fallback(user_prompt, domains, semantic_threshold)
+                matched_keywords.update(semantic_matches)
 
         # Load rules for matched domains (skip COMMANDS - handled separately)
         for domain in matched_keywords:
