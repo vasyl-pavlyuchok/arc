@@ -1,0 +1,91 @@
+# CARL Manifest
+# ==============
+# Controls which domains are active and how they're triggered.
+#
+# Format:
+#   DEVMODE=true|false                (debug output in responses)
+#   {DOMAIN}_STATE=active|inactive    (whether domain is enabled)
+#   {DOMAIN}_ALWAYS_ON=true|false     (load every prompt, no keyword matching)
+#   {DOMAIN}_RECALL=keyword1,keyword2 (triggers on-demand loading)
+#   {DOMAIN}_EXCLUDE=word1,word2      (skip domain if these words in prompt)
+#
+# Loading Logic:
+#   1. ALWAYS_ON=true domains load every prompt
+#   2. Other active domains load when recall keywords match user prompt
+#   3. Exclusions are checked before matching
+
+# ============================================================================
+# SETTINGS
+# ============================================================================
+DEVMODE=false
+
+# ============================================================================
+# GLOBAL - Universal rules (always loaded)
+# ============================================================================
+GLOBAL_STATE=active
+GLOBAL_ALWAYS_ON=true
+
+# ============================================================================
+# CONTEXT - Dynamic bracket rules based on context window usage
+# ============================================================================
+CONTEXT_STATE=active
+CONTEXT_ALWAYS_ON=true
+
+# ============================================================================
+# COMMANDS - Star-commands like *dev, *review, *brief
+# Detected via *pattern matching, rules in commands file
+# ============================================================================
+COMMANDS_STATE=active
+
+# ============================================================================
+# N8N - Automatización y workflows
+# ============================================================================
+N8N_STATE=active
+N8N_ALWAYS_ON=false
+N8N_RECALL=n8n, workflow, automatización, automatizacion, automation, agentbooster, techbooster, n8n-agent, n8n-tech, webhook, nodo, node, trigger, ejecutar workflow, crear workflow
+
+# ============================================================================
+# DOCKER - Infraestructura y contenedores
+# ============================================================================
+DOCKER_STATE=active
+DOCKER_ALWAYS_ON=false
+DOCKER_RECALL=docker, contenedor, container, compose, traefik, build, deploy, imagen, image, puerto, port, producción, produccion, production, publicar, subir, desplegar
+
+# ============================================================================
+# VASYLPAVLYUCHOK - Web personal
+# ============================================================================
+VASYLPAVLYUCHOK_STATE=active
+VASYLPAVLYUCHOK_ALWAYS_ON=false
+VASYLPAVLYUCHOK_RECALL=vasylpavlyuchok, web personal, portfolio, diseño web, design page, next.js, shadcn, framer, /design, /ai, hero, landing, página, pagina
+VASYLPAVLYUCHOK_PATH=/root/projects/vasylpavlyuchok
+
+# ============================================================================
+# SERVIDOR - Gestión del VPS
+# ============================================================================
+SERVIDOR_STATE=active
+SERVIDOR_ALWAYS_ON=false
+SERVIDOR_RECALL=servidor, vps, hostinger, bot telegram, claude-telegram, dippy, ip, ubuntu, screenshot, temporary_screenshots
+
+# ============================================================================
+# DASHBOARD-UI - Lenguaje visual para dashboards y paneles de control
+# Referencia completa: ~/.claude/design-system.md
+# ============================================================================
+DASHBOARD_UI_STATE=active
+DASHBOARD_UI_ALWAYS_ON=false
+DASHBOARD_UI_RECALL=dashboard, panel, interfaz, client portal, portal cliente, widget, metric, gauge, card component, liquid glass, admin ui, data panel, kpi, analytics panel
+
+# ============================================================================
+# ESTETIA - Demo clínica estética
+# ============================================================================
+ESTETIA_STATE=active
+ESTETIA_ALWAYS_ON=false
+ESTETIA_RECALL=estetia, clínica, clinica, medicina estética, estetica, dreamteam, aiShowcase, servicios, tratamiento
+ESTETIA_PATH=/root/projects/estetia
+
+# ============================================================================
+# SEMANTIC MATCHING - Fallback when keyword matching finds 0 domains
+# Requires: pip install sentence-transformers (~80MB, downloads on first use)
+# Adds ~1-2s latency ONLY when literal matching fails (rare)
+# ============================================================================
+SEMANTIC_MATCHING=false
+SEMANTIC_THRESHOLD=0.55
