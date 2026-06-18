@@ -14,7 +14,35 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-ARC_DIR = Path.home() / '.arc'
+ARC_FOLDER = '.arc'
+
+# Installed/relocatable ARC home — this hook lives at <ARC_HOME>/hooks/arc-suggest.py
+ARC_HOME = Path(__file__).resolve().parent.parent
+LEGACY_ARC_HOME = Path.home() / ARC_FOLDER
+
+
+def resolve_arc_home(cwd: str = '') -> Path | None:
+    """
+    Resolve the active ARC home with the unified precedence chain:
+    per-project (cwd) > installed/relocatable > legacy ~/.arc.
+    Returns None if no manifest is found anywhere.
+    """
+    if cwd:
+        search_path = Path(cwd)
+        for _ in range(10):
+            candidate = search_path / ARC_FOLDER
+            if candidate.exists() and (candidate / 'manifest').exists():
+                return candidate
+            if search_path.parent == search_path:
+                break
+            search_path = search_path.parent
+    if (ARC_HOME / 'manifest').exists():
+        return ARC_HOME
+    if (LEGACY_ARC_HOME / 'manifest').exists():
+        return LEGACY_ARC_HOME
+    return None
+
+
 MIN_FREQUENCY = 2       # word must appear in N+ unmatched prompts to be suggested
 MIN_WORD_LEN = 4        # ignore short words
 MAX_PROMPTS_TO_SCAN = 20
@@ -154,13 +182,14 @@ def main():
     if input_data.get('hook_event_name') != 'Stop':
         sys.exit(0)
 
-    if not ARC_DIR.exists():
-        sys.exit(0)
-
     session_id = input_data.get('session_id', '') or input_data.get('sessionId', '')
     cwd = input_data.get('cwd', '')
 
-    domains = parse_manifest_domains(ARC_DIR)
+    arc_dir = resolve_arc_home(cwd)
+    if arc_dir is None:
+        sys.exit(0)
+
+    domains = parse_manifest_domains(arc_dir)
     if not domains:
         sys.exit(0)
 

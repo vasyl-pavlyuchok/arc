@@ -23,33 +23,58 @@ import sys
 import time
 from pathlib import Path
 
-ARC_DIR = Path.home() / '.arc'
-CACHE_FILE = ARC_DIR / 'embeddings.cache.pkl'
+ARC_FOLDER = '.arc'
 MODEL_NAME = 'all-MiniLM-L6-v2'
 DEFAULT_THRESHOLD = 0.55
 
+# Installed/relocatable ARC home — this hook lives at <ARC_HOME>/hooks/arc-semantic.py
+ARC_HOME = Path(__file__).resolve().parent.parent
+LEGACY_ARC_HOME = Path.home() / ARC_FOLDER
 
-def load_embeddings_cache() -> dict:
+
+def resolve_arc_home(cwd: str = '') -> Path:
+    """
+    Resolve the active ARC home with the unified precedence chain:
+    per-project (cwd, if given) > installed/relocatable > legacy ~/.arc.
+    Always returns a Path (falls back to ARC_HOME) so the cache has a home.
+    """
+    if cwd:
+        search_path = Path(cwd)
+        for _ in range(10):
+            candidate = search_path / ARC_FOLDER
+            if candidate.exists() and (candidate / 'manifest').exists():
+                return candidate
+            if search_path.parent == search_path:
+                break
+            search_path = search_path.parent
+    if (ARC_HOME / 'manifest').exists():
+        return ARC_HOME
+    if (LEGACY_ARC_HOME / 'manifest').exists():
+        return LEGACY_ARC_HOME
+    return ARC_HOME
+
+
+def load_embeddings_cache(cache_file: Path) -> dict:
     """Load cached domain embeddings if they exist."""
-    if CACHE_FILE.exists():
+    if cache_file.exists():
         try:
-            with open(CACHE_FILE, 'rb') as f:
+            with open(cache_file, 'rb') as f:
                 return pickle.load(f)
         except Exception:
             pass
     return {}
 
 
-def save_embeddings_cache(cache: dict) -> None:
+def save_embeddings_cache(cache_file: Path, cache: dict) -> None:
     try:
-        with open(CACHE_FILE, 'wb') as f:
+        with open(cache_file, 'wb') as f:
             pickle.dump(cache, f)
     except Exception:
         pass
 
 
-def get_manifest_mtime() -> float:
-    manifest = ARC_DIR / 'manifest'
+def get_manifest_mtime(arc_dir: Path) -> float:
+    manifest = arc_dir / 'manifest'
     return manifest.stat().st_mtime if manifest.exists() else 0.0
 
 
@@ -74,6 +99,11 @@ def main():
     domains = input_data.get('domains', {})
     threshold = input_data.get('threshold', DEFAULT_THRESHOLD)
 
+    # ARC home: prefer the one the caller already resolved; else resolve via chain
+    arc_home_in = input_data.get('arc_home', '')
+    arc_dir = Path(arc_home_in) if arc_home_in else resolve_arc_home(input_data.get('cwd', ''))
+    cache_file = arc_dir / 'embeddings.cache.pkl'
+
     if not prompt or not domains:
         print(json.dumps({"matched": {}}))
         return
@@ -95,8 +125,8 @@ def main():
         return
 
     # Load or rebuild embeddings cache
-    cache = load_embeddings_cache()
-    manifest_mtime = get_manifest_mtime()
+    cache = load_embeddings_cache(cache_file)
+    manifest_mtime = get_manifest_mtime(arc_dir)
     cache_valid = cache.get('_mtime') == manifest_mtime
 
     model = SentenceTransformer(MODEL_NAME)
@@ -108,7 +138,7 @@ def main():
             text = get_domain_text(name, cfg)
             domain_embeddings[name] = model.encode(text, convert_to_tensor=True)
         cache = {'_mtime': manifest_mtime, 'domains': domain_embeddings}
-        save_embeddings_cache(cache)
+        save_embeddings_cache(cache_file, cache)
     else:
         domain_embeddings = cache.get('domains', {})
 

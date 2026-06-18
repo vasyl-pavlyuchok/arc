@@ -34,6 +34,46 @@ MAX_CONTEXT = 200000
 STALE_SESSION_HOURS = 24  # Cleanup sessions older than this
 DEBUG = False  # Set to True to log to stderr
 
+# Installed ARC home — derived from THIS hook's own location so ARC is fully
+# relocatable. The hook lives at <ARC_HOME>/hooks/arc-hook.py, so
+# parent.parent == <ARC_HOME> (e.g. the capsule's ~/.aura/arc/ or any path).
+ARC_HOME = Path(__file__).resolve().parent.parent
+# Legacy standalone home (install.sh default). Kept so existing standalone
+# installs that live in ~/.arc keep working.
+LEGACY_ARC_HOME = Path.home() / ARC_FOLDER
+
+
+def resolve_arc_home(cwd: str) -> Path | None:
+    """
+    Resolve the active ARC home using a single, unified precedence chain:
+      (1) per-project: walk up from cwd looking for a `.arc/` that has a
+          `manifest` — WINS if found (project override, original behavior).
+      (2) installed/relocatable: ARC_HOME (dir containing this hooks/ folder)
+          if it has a `manifest` — covers the capsule (~/.aura/arc) and any
+          other relocated install.
+      (3) legacy: ~/.arc if it has a `manifest` — standalone install.sh layout.
+    Returns the resolved ARC home Path, or None if no manifest is found anywhere.
+    """
+    # (1) Per-project .arc/ walking up from cwd
+    search_path = Path(cwd)
+    for _ in range(10):  # Max 10 levels up
+        candidate = search_path / ARC_FOLDER
+        if candidate.exists() and (candidate / 'manifest').exists():
+            return candidate
+        if search_path.parent == search_path:  # Hit root
+            break
+        search_path = search_path.parent
+
+    # (2) Installed / relocatable home (capsule, etc.)
+    if (ARC_HOME / 'manifest').exists():
+        return ARC_HOME
+
+    # (3) Legacy ~/.arc standalone install
+    if (LEGACY_ARC_HOME / 'manifest').exists():
+        return LEGACY_ARC_HOME
+
+    return None
+
 
 def debug_log(msg: str):
     """Log debug messages to stderr."""
@@ -518,36 +558,25 @@ def parse_context_file(context_path: Path) -> tuple[dict[str, bool], dict[str, l
     return bracket_flags, bracket_rules
 
 
-def find_carl_files(cwd: str) -> dict[str, Path]:
+def find_arc_files(cwd: str) -> dict[str, Path]:
     """
-    Find all files in .arc/ folder by walking up directory tree.
+    Find all files in the resolved .arc/ home.
+    Home is resolved via resolve_arc_home() (per-project > installed > legacy).
     Returns dict mapping file type to path.
     """
-    carl_files = {}
+    arc_files = {}
 
-    # Walk up directory tree to find .arc (like session-context hooks do)
-    search_path = Path(cwd)
-    arc_path = None
-
-    for _ in range(10):  # Max 10 levels up
-        candidate = search_path / ARC_FOLDER
-        if candidate.exists() and (candidate / 'manifest').exists():
-            arc_path = candidate
-            break
-        if search_path.parent == search_path:  # Hit root
-            break
-        search_path = search_path.parent
-
+    arc_path = resolve_arc_home(cwd)
     if arc_path is None:
-        return carl_files
+        return arc_files
 
     for f in arc_path.iterdir():
         if f.is_file() and not f.name.startswith('.'):
             # Normalize name: strip .env extension so both 'domain' and 'domain.env' work
             name = f.stem if f.suffix.lower() == '.env' else f.name
-            carl_files[name] = f
+            arc_files[name] = f
 
-    return carl_files
+    return arc_files
 
 
 def parse_manifest(manifest_path: Path) -> tuple[dict, list[str], bool]:
@@ -649,9 +678,11 @@ def parse_semantic_config(manifest_path: Path) -> tuple[bool, float]:
     return enabled, threshold
 
 
-def run_semantic_fallback(prompt: str, domains: dict, threshold: float) -> dict[str, list[str]]:
+def run_semantic_fallback(prompt: str, domains: dict, threshold: float,
+                          arc_home: str = '') -> dict[str, list[str]]:
     """
     Call arc-semantic.py as subprocess to get semantic domain matches.
+    Passes the already-resolved arc_home so the embeddings cache shares it.
     Returns {DOMAIN: ['semantic']} or {} on failure.
     """
     semantic_script = Path(__file__).parent / 'arc-semantic.py'
@@ -659,7 +690,8 @@ def run_semantic_fallback(prompt: str, domains: dict, threshold: float) -> dict[
         debug_log("arc-semantic.py not found — skipping semantic fallback")
         return {}
 
-    payload = json.dumps({'prompt': prompt, 'domains': domains, 'threshold': threshold})
+    payload = json.dumps({'prompt': prompt, 'domains': domains,
+                          'threshold': threshold, 'arc_home': arc_home})
     try:
         result = subprocess.run(
             ['python3', str(semantic_script)],
@@ -865,7 +897,7 @@ def format_output(
     """
     Format the injected rules as XML context block.
     """
-    output = "\n<carl-rules>\n"
+    output = "\n<arc-rules>\n"
 
     # Context bracket status (only if CONTEXT domain is enabled)
     if context_enabled:
@@ -908,7 +940,7 @@ def format_output(
         output += "Format your debug section EXACTLY like this:\n"
         output += "---\n"
         output += "```\n"
-        output += "🔧 CARL DEVMODE\n"
+        output += "🔧 ARC DEVMODE\n"
         output += "Domains Loaded: [list domains that were loaded]\n"
         output += "Rules Applied: [list specific rule #s that influenced response]\n"
         output += "Tools Used: [list any tools called]\n"
@@ -919,7 +951,7 @@ def format_output(
         output += "="*60 + "\n\n"
     else:
         output += "🚫 DEVMODE=false 🚫\n"
-        output += "User has DISABLED debug output. Do NOT append any CARL DEVMODE\n"
+        output += "User has DISABLED debug output. Do NOT append any ARC DEVMODE\n"
         output += "debug section to your responses. Respond normally without debug blocks.\n\n"
 
     # GLOBAL domain disabled - explicit instruction to not apply from memory
@@ -985,7 +1017,7 @@ def format_output(
             output += f"  {item}\n"
         output += "Use drl_get_domain_rules(domain) to load manually if needed.\n"
 
-    output += "</carl-rules>\n"
+    output += "</arc-rules>\n"
 
     return output
 
@@ -1070,21 +1102,21 @@ def main():
 
     debug_log(f"User prompt: {user_prompt[:100]}...")
 
-    # Find all files in .arc/ folder
-    carl_files = find_carl_files(cwd)
+    # Find all files in the resolved .arc/ home
+    arc_files = find_arc_files(cwd)
 
     # Must have manifest
-    if 'manifest' not in carl_files:
+    if 'manifest' not in arc_files:
         sys.exit(0)
 
     # Get arc_path from manifest location
-    arc_path = carl_files['manifest'].parent
+    arc_path = arc_files['manifest'].parent
 
     # Get or create session config (registers new sessions, updates activity)
     session_config = get_or_create_session(arc_path, session_id, cwd)
 
     # Parse manifest (returns domains, global_exclude, devmode)
-    domains, global_exclude, devmode = parse_manifest(carl_files['manifest'])
+    domains, global_exclude, devmode = parse_manifest(arc_files['manifest'])
 
     if not domains:
         sys.exit(0)
@@ -1108,8 +1140,8 @@ def main():
         if overrides.get('CONTEXT_STATE') is not None:
             context_enabled = overrides['CONTEXT_STATE']
             debug_log(f"Session override CONTEXT_STATE: {context_enabled}")
-    if 'context' in carl_files and context_enabled:
-        bracket_flags, all_bracket_rules = parse_context_file(carl_files['context'])
+    if 'context' in arc_files and context_enabled:
+        bracket_flags, all_bracket_rules = parse_context_file(arc_files['context'])
         # Use DEPLETED rules for CRITICAL bracket
         rules_bracket = "DEPLETED" if bracket == "CRITICAL" else bracket
         # Only include if bracket is enabled
@@ -1132,7 +1164,7 @@ def main():
     for domain, config in domains.items():
         is_always_on = config.get('always_on', False) or domain == 'GLOBAL'
         if is_always_on and config.get('state', True):
-            domain_file = carl_files.get(domain.lower())
+            domain_file = arc_files.get(domain.lower())
             if domain_file:
                 rules = parse_domain_rules(domain_file, domain, compact=True)
                 if rules:
@@ -1147,10 +1179,10 @@ def main():
         if overrides.get('COMMANDS_STATE') is not None:
             commands_enabled = overrides['COMMANDS_STATE']
             debug_log(f"Session override COMMANDS_STATE: {commands_enabled}")
-    if user_prompt and 'commands' in carl_files and commands_enabled:
+    if user_prompt and 'commands' in arc_files and commands_enabled:
         star_commands = detect_star_commands(user_prompt)
         if star_commands:
-            command_rules = parse_command_rules(carl_files['commands'], star_commands)
+            command_rules = parse_command_rules(arc_files['commands'], star_commands)
             debug_log(f"Commands detected: {star_commands}, rules loaded: {list(command_rules.keys())}")
     elif not commands_enabled:
         debug_log("COMMANDS domain disabled via COMMANDS_STATE")
@@ -1169,17 +1201,17 @@ def main():
 
         # Semantic fallback: only when literal matching found 0 domains AND opt-in
         if not matched_keywords:
-            semantic_enabled, semantic_threshold = parse_semantic_config(carl_files['manifest'])
+            semantic_enabled, semantic_threshold = parse_semantic_config(arc_files['manifest'])
             if semantic_enabled:
                 debug_log("Literal matching returned 0 — trying semantic fallback")
-                semantic_matches = run_semantic_fallback(user_prompt, domains, semantic_threshold)
+                semantic_matches = run_semantic_fallback(user_prompt, domains, semantic_threshold, str(arc_path))
                 matched_keywords.update(semantic_matches)
 
         # Load rules for matched domains (skip COMMANDS - handled separately)
         for domain in matched_keywords:
             if domain == 'COMMANDS':
                 continue  # Commands handled via star_commands detection
-            domain_file = carl_files.get(domain.lower())
+            domain_file = arc_files.get(domain.lower())
             if domain_file:
                 rules = parse_domain_rules(domain_file, domain, compact=False)
                 if rules:
@@ -1193,7 +1225,7 @@ def main():
     path_detected = detect_project_from_tool_calls(input_data, domains)
     for domain in path_detected:
         if domain not in matched_rules and domain not in always_on_rules:
-            domain_file = carl_files.get(domain.lower())
+            domain_file = arc_files.get(domain.lower())
             if domain_file:
                 rules = parse_domain_rules(domain_file, domain, compact=False)
                 if rules:
@@ -1202,7 +1234,7 @@ def main():
                     debug_log(f"Path-detected domain loaded: {domain}")
 
     # Build set of domain files that exist (lowercase for matching)
-    domains_with_files = {name.lower() for name in carl_files.keys() if name != 'manifest' and name != 'context'}
+    domains_with_files = {name.lower() for name in arc_files.keys() if name != 'manifest' and name != 'context'}
 
     # Format output
     context = format_output(
